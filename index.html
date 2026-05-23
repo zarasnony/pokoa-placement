@@ -110,6 +110,7 @@
             justify-content: center;
             cursor: grab;
             user-select: none;
+            touch-action: none;
             transition: transform 0.15s, box-shadow 0.15s;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             padding: 2px;
@@ -569,21 +570,32 @@
                 const townIdx = parseInt(townBox.id.split('-')[1]);
                 insertPlacement(id, townIdx, pendingInsertBeforeId);
                 pendingInsertBeforeId = null;
-                applyPlacedStyle(id); // storage card → 0.3
+                applyPlacedStyle(id);
                 if (prevTown && prevTown !== townIdx) refreshTownArea(prevTown);
                 refreshTownArea(townIdx);
                 updateCounts();
                 save();
             } else if (inStorage && prevTown) {
                 delete placements[id];
-                clearPlacedStyle(id); // storage card → 1.0
+                clearPlacedStyle(id);
                 refreshTownArea(prevTown);
                 updateCounts();
                 save();
             } else {
-                // 無効な場所にドロップ → 元の状態に戻す
                 sourceCard.style.opacity = prevTown ? '0.3' : '1';
             }
+        });
+
+        document.addEventListener('pointercancel', () => {
+            if (!drag) return;
+            drag.clone.remove();
+            clearInsertIndicators();
+            indicatorKey = null;
+            document.querySelectorAll('.town-box.drag-over').forEach(b => b.classList.remove('drag-over'));
+            storage.classList.remove('drag-over');
+            const { prevTown, sourceCard } = drag;
+            drag = null;
+            sourceCard.style.opacity = prevTown ? '0.3' : '1';
         });
     }
 
@@ -613,21 +625,54 @@
     }
 
     function savePlacement() {
-        save();
-        showToast('✓ 配置を保存しました');
+        const json = JSON.stringify(placements, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'pokemon-placement.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('✓ 配置をファイルに保存しました');
     }
 
     function loadPlacement() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const data = JSON.parse(ev.target.result);
+                    Object.keys(placements).forEach(k => delete placements[k]);
+                    document.querySelectorAll('#pokemon-storage .pokemon-card').forEach(c => c.style.opacity = '1');
+                    Object.assign(placements, data);
+                    for (let i = 1; i <= 5; i++) refreshTownArea(i);
+                    Object.keys(placements).forEach(id => applyPlacedStyle(id));
+                    updateCounts();
+                    save();
+                    showToast('✓ 配置を読み込みました');
+                } catch {
+                    showToast('✗ ファイルの読み込みに失敗しました');
+                }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    }
+
+    function restoreFromLocalStorage() {
         const saved = localStorage.getItem('pokemonPlacement');
         if (!saved) return;
-
-        const data = JSON.parse(saved);
-        Object.assign(placements, data);
-
-        Object.entries(placements).forEach(([id, townIdx]) => {
-            applyPlacedStyle(id);
-            refreshTownArea(townIdx);
-        });
+        try {
+            const data = JSON.parse(saved);
+            Object.assign(placements, data);
+            for (let i = 1; i <= 5; i++) refreshTownArea(i);
+            Object.keys(placements).forEach(id => applyPlacedStyle(id));
+        } catch {}
     }
 
     function resetPlacement() {
@@ -662,7 +707,7 @@
         POKEMON_MAP.forEach(entry => storage.appendChild(createStorageCard(entry)));
         setupSearch();
         setupDragDrop();
-        loadPlacement();
+        restoreFromLocalStorage();
         updateCounts();
         if (window.innerWidth <= 768) switchMobileTown(1);
     }
