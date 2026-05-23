@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ぽこあ ポケモン配置シミュレーター</title>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+            background-color: #e9ecef;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        h1 { color: #333; font-size: 1.5rem; margin: 0; }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 8px 16px;
+            background: #4A90E2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        button:hover { background: #357abd; }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            gap: 15px;
+            padding: 15px;
+        }
+
+        .left-panel {
+            width: 280px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .storage-header {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-shrink: 0;
+        }
+
+        .storage-header h3 { margin: 0; font-size: 14px; }
+
+        .search-box {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            width: 100%;
+            font-size: 13px;
+        }
+
+        .storage-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 5px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 5px;
+            border: 2px inset #ddd;
+            background: #fff;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .pokemon-card {
+            width: 100%;
+            aspect-ratio: 1;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            user-select: none;
+            transition: transform 0.15s, box-shadow 0.15s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 2px;
+        }
+
+        .pokemon-card:hover { transform: scale(1.08); box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
+        .pokemon-card:active { cursor: grabbing; }
+        .pokemon-card.hidden { display: none; }
+
+        .pokemon-img {
+            width: 90%;
+            height: 90%;
+            object-fit: contain;
+        }
+
+        .pokemon-name {
+            display: none;
+        }
+
+        .right-panel {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            padding: 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+
+        .town-box {
+            background: white;
+            border: 3px dashed #cbd5e0;
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            display: flex;
+            flex-direction: column;
+            transition: background 0.3s, border-color 0.3s;
+            min-height: 0;
+            overflow: hidden;
+            min-width: 100px;
+        }
+
+        .town-box h4 {
+            margin: 0 0 10px 0;
+            color: #2d3748;
+            border-bottom: 2px solid #edf2f7;
+            padding-bottom: 8px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .town-pokemon-area {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, 55px);
+            gap: 5px;
+            overflow-y: auto;
+            padding: 6px;
+            min-height: 0;
+            align-content: start;
+        }
+
+        .town-box.drag-over {
+            background: #ebf8ff;
+            border-color: #4299e1;
+        }
+
+        .pokemon-card.drag-over {
+            background: #ebf8ff;
+            border-color: #4299e1;
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a0aec0; }
+
+        .drop-indicator {
+            width: 55px;
+            height: 55px;
+            border: 2px dashed #4A90E2;
+            border-radius: 4px;
+            background: rgba(74, 144, 226, 0.08);
+            animation: indicatorPulse 0.7s ease-in-out infinite alternate;
+            flex-shrink: 0;
+            pointer-events: none;
+        }
+
+        @keyframes indicatorPulse {
+            from { border-color: #4A90E2; background: rgba(74,144,226,0.08); }
+            to   { border-color: #63b3ed; background: rgba(74,144,226,0.2); }
+        }
+
+        /* ── モバイルタブバー（デスクトップでは非表示）── */
+        .mobile-tab-bar { display: none; }
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 10px 12px;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            h1 { font-size: 1rem; }
+            button { padding: 6px 10px; font-size: 12px; }
+
+            .mobile-tab-bar {
+                display: flex;
+                gap: 4px;
+                padding: 8px;
+                background: white;
+                border-bottom: 1px solid #e2e8f0;
+                flex-shrink: 0;
+            }
+
+            .mobile-tab {
+                flex: 1;
+                padding: 6px 2px;
+                font-size: 10px;
+                background: #e2e8f0;
+                color: #4a5568;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                line-height: 1.3;
+                text-align: center;
+            }
+
+            .mobile-tab.active {
+                background: #4A90E2;
+                color: white;
+            }
+
+            .main-container {
+                flex-direction: column;
+                padding: 8px 8px 0;
+                gap: 8px;
+            }
+
+            /* 待機エリアを下部に固定 */
+            .left-panel {
+                width: 100%;
+                height: 300px;
+                order: 2;
+                flex-shrink: 0;
+                border-radius: 12px;
+            }
+
+            .storage-grid {
+                grid-template-columns: repeat(auto-fill, 48px);
+            }
+
+            /* 街エリアを上部に、1街ずつ表示 */
+            .right-panel {
+                flex: 1;
+                display: flex;
+                overflow: hidden;
+                order: 1;
+            }
+
+            .town-box {
+                display: none;
+                flex: 1;
+            }
+
+            .town-box.mobile-active {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>ぽこあ 配置設定マネージャー</h1>
+    <div class="controls">
+        <button onclick="savePlacement()">💾 保存</button>
+        <button onclick="loadPlacement()">📂 読込</button>
+        <button onclick="sortAll()">↕ ソート</button>
+        <button onclick="resetPlacement()">🔄 リセット</button>
+    </div>
+</div>
+
+<div class="mobile-tab-bar">
+    <button class="mobile-tab" onclick="switchMobileTown(1)">こうや</button>
+    <button class="mobile-tab" onclick="switchMobileTown(2)">うみべ</button>
+    <button class="mobile-tab" onclick="switchMobileTown(3)">やま</button>
+    <button class="mobile-tab" onclick="switchMobileTown(4)">うきしま</button>
+    <button class="mobile-tab" onclick="switchMobileTown(5)">まっさら</button>
+</div>
+
+<div class="main-container">
+    <div class="left-panel">
+        <div class="storage-header">
+            <h3>待機中 <span id="storage-count" style="font-weight:normal;font-size:12px;color:#888;"></span></h3>
+            <input type="text" id="search-box" class="search-box" placeholder="検索...">
+        </div>
+        <div class="storage-grid" id="pokemon-storage"></div>
+    </div>
+
+    <div class="right-panel">
+        <div class="town-box" id="town-1"><h4>パサパサこうやの街 <span class="town-count"></span></h4><div class="town-pokemon-area"></div></div>
+        <div class="town-box" id="town-2"><h4>ドンヨリうみべの街 <span class="town-count"></span></h4><div class="town-pokemon-area"></div></div>
+        <div class="town-box" id="town-3"><h4>ゴツゴツやまの街 <span class="town-count"></span></h4><div class="town-pokemon-area"></div></div>
+        <div class="town-box" id="town-4"><h4>キラキラうきしまの街 <span class="town-count"></span></h4><div class="town-pokemon-area"></div></div>
+        <div class="town-box" id="town-5"><h4>まっさらな街 <span class="town-count"></span></h4><div class="town-pokemon-area"></div></div>
+    </div>
+</div>
+
+<script src="pokemon_data.js"></script>
+<script>
+    // placements: { cardId: townIndex(1-5) or null }
+    const placements = {};
+
+    const PLACEHOLDER_SRC = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#e2e8f0" rx="10"/><text x="50" y="68" text-anchor="middle" font-size="54" font-family="sans-serif" fill="#718096">?</text></svg>')}`;
+
+    function createImg(dex, name, localImg) {
+        const img = document.createElement('img');
+        img.alt = name;
+        img.className = 'pokemon-img';
+
+        if (localImg) {
+            img.src = localImg;
+            return img;
+        }
+        if (!dex) {
+            img.src = PLACEHOLDER_SRC;
+            return img;
+        }
+
+        // ローカル画像を優先（SVG → PNG）、なければPokeAPIにフォールバック
+        img.src = `images/${dex}.svg`;
+        img.onerror = function() {
+            if (!this.dataset.f1) {
+                this.dataset.f1 = '1';
+                this.src = `images/${dex}.png`;
+            } else if (!this.dataset.f2) {
+                this.dataset.f2 = '1';
+                this.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/dream-world/${dex}.svg`;
+            } else if (!this.dataset.f3) {
+                this.dataset.f3 = '1';
+                this.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${dex}.png`;
+            } else {
+                this.src = PLACEHOLDER_SRC;
+                this.onerror = null;
+            }
+        };
+        return img;
+    }
+
+    function cardId(entry) {
+        return `poke-${entry.num}-${entry.name}`;
+    }
+
+    // 待機エリアの元カードを生成（並び固定・DOM移動しない）
+    function createStorageCard(entry) {
+        const card = document.createElement('div');
+        card.className = 'pokemon-card';
+        card.id = cardId(entry);
+        card.title = entry.name;
+        card.dataset.pokemon = entry.name;
+        card.dataset.pokenum = entry.num;
+        card.dataset.dex = entry.dex;
+        card.appendChild(createImg(entry.dex, entry.name, entry.img));
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'pokemon-name';
+        nameDiv.textContent = entry.name;
+        card.appendChild(nameDiv);
+        return card;
+    }
+
+    // 街エリアの表示用カード（元カードのIDを持つ）
+    function createTownCard(entry) {
+        const card = document.createElement('div');
+        card.className = 'pokemon-card';
+        card.title = entry.name;
+        card.dataset.originId = cardId(entry);
+        card.dataset.pokemon = entry.name;
+        card.dataset.dex = entry.dex;
+        card.appendChild(createImg(entry.dex, entry.name, entry.img));
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'pokemon-name';
+        nameDiv.textContent = entry.name;
+        card.appendChild(nameDiv);
+        return card;
+    }
+
+    function getEntryByCardId(id) {
+        return POKEMON_MAP.find(e => cardId(e) === id);
+    }
+
+    function applyPlacedStyle(id) {
+        const el = document.getElementById(id);
+        if (el) el.style.opacity = '0.3';
+    }
+
+    function clearPlacedStyle(id) {
+        const el = document.getElementById(id);
+        if (el) el.style.opacity = '1';
+    }
+
+    function refreshTownArea(townIdx) {
+        const area = document.querySelectorAll('.town-pokemon-area')[townIdx - 1];
+        area.innerHTML = '';
+
+        let entries = Object.entries(placements)
+            .filter(([id, t]) => t === townIdx)
+            .map(([id]) => getEntryByCardId(id))
+            .filter(Boolean);
+
+        entries.forEach(entry => area.appendChild(createTownCard(entry)));
+    }
+
+    function sortAll() {
+        // placementsの挿入順をPOKEMON_MAP順に並び替える
+        const sorted = {};
+        POKEMON_MAP.forEach(entry => {
+            const id = cardId(entry);
+            if (placements[id] !== undefined) sorted[id] = placements[id];
+        });
+        Object.keys(placements).forEach(k => delete placements[k]);
+        Object.assign(placements, sorted);
+
+        for (let i = 1; i <= 5; i++) refreshTownArea(i);
+        save();
+    }
+
+    let pendingInsertBeforeId = null;
+
+    function createIndicator() {
+        const el = document.createElement('div');
+        el.className = 'drop-indicator';
+        return el;
+    }
+
+    function clearInsertIndicators() {
+        document.querySelectorAll('.drop-indicator').forEach(el => el.remove());
+    }
+
+    // placements のキー順を保ちつつ指定位置に挿入
+    function insertPlacement(id, townIdx, beforeId) {
+        const updated = {};
+        let inserted = false;
+
+        for (const [k, v] of Object.entries(placements)) {
+            if (k === id) continue;
+            if (k === beforeId && !inserted) {
+                updated[id] = townIdx;
+                inserted = true;
+            }
+            updated[k] = v;
+        }
+        if (!inserted) updated[id] = townIdx;
+
+        Object.keys(placements).forEach(k => delete placements[k]);
+        Object.assign(placements, updated);
+    }
+
+    function setupDragDrop() {
+        const storage = document.getElementById('pokemon-storage');
+        let drag = null;
+        let indicatorKey = null;
+
+        document.addEventListener('pointerdown', (e) => {
+            const card = e.target.closest('.pokemon-card');
+            if (!card) return;
+            e.preventDefault();
+
+            const id = card.dataset.originId || card.id;
+            if (!id) return;
+            if (card.closest('#pokemon-storage') && placements[id] !== undefined) return;
+
+            const clone = card.cloneNode(true);
+            const size = 55;
+            clone.style.cssText = `position:fixed;width:${size}px;height:${size}px;left:${e.clientX - size/2}px;top:${e.clientY - size/2}px;pointer-events:none;z-index:9999;opacity:0.9;transform:scale(1.15);transform-origin:center;box-shadow:0 12px 32px rgba(0,0,0,0.35);border-radius:6px;transition:none;`;
+            document.body.appendChild(clone);
+
+            card.style.opacity = card.closest('#pokemon-storage') ? '0.3' : '0';
+
+            drag = {
+                id,
+                clone,
+                sourceCard: card,
+                offsetX: size / 2,
+                offsetY: size / 2,
+                prevTown: placements[id],
+            };
+        }, { passive: false });
+
+        document.addEventListener('pointermove', (e) => {
+            if (!drag) return;
+
+            drag.clone.style.left = `${e.clientX - drag.offsetX}px`;
+            drag.clone.style.top  = `${e.clientY - drag.offsetY}px`;
+
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            const townBox = under?.closest('.town-box');
+            const inStorage = under?.closest('.left-panel');
+
+            document.querySelectorAll('.town-box.drag-over').forEach(b => b.classList.remove('drag-over'));
+            storage.classList.remove('drag-over');
+
+            if (townBox) {
+                townBox.classList.add('drag-over');
+                const area = townBox.querySelector('.town-pokemon-area');
+                const cards = [...area.querySelectorAll('.pokemon-card')]
+                    .filter(c => c.dataset.originId !== drag.id);
+
+                let newKey = 'end';
+                let newBeforeId = null;
+                let insertFn = () => area.appendChild(createIndicator());
+
+                for (const c of cards) {
+                    const r = c.getBoundingClientRect();
+                    const inRow = e.clientY >= r.top && e.clientY <= r.bottom;
+                    const above = e.clientY < r.top;
+                    if (above || (inRow && e.clientX < r.left + r.width / 2)) {
+                        newBeforeId = c.dataset.originId || null;
+                        newKey = 'before:' + (newBeforeId || '?');
+                        insertFn = () => c.insertAdjacentElement('beforebegin', createIndicator());
+                        break;
+                    }
+                }
+
+                if (newKey !== indicatorKey) {
+                    clearInsertIndicators();
+                    indicatorKey = newKey;
+                    pendingInsertBeforeId = newBeforeId;
+                    insertFn();
+                }
+            } else {
+                if (indicatorKey !== null) {
+                    clearInsertIndicators();
+                    indicatorKey = null;
+                    pendingInsertBeforeId = null;
+                }
+                if (inStorage) storage.classList.add('drag-over');
+            }
+        });
+
+        document.addEventListener('pointerup', (e) => {
+            if (!drag) return;
+
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            const townBox = under?.closest('.town-box');
+            const inStorage = under?.closest('.left-panel');
+
+            drag.clone.remove();
+            clearInsertIndicators();
+            indicatorKey = null;
+            document.querySelectorAll('.town-box.drag-over').forEach(b => b.classList.remove('drag-over'));
+            storage.classList.remove('drag-over');
+
+            const { id, prevTown, sourceCard } = drag;
+            drag = null;
+
+            if (townBox) {
+                const townIdx = parseInt(townBox.id.split('-')[1]);
+                insertPlacement(id, townIdx, pendingInsertBeforeId);
+                pendingInsertBeforeId = null;
+                applyPlacedStyle(id); // storage card → 0.3
+                if (prevTown && prevTown !== townIdx) refreshTownArea(prevTown);
+                refreshTownArea(townIdx);
+                updateCounts();
+                save();
+            } else if (inStorage && prevTown) {
+                delete placements[id];
+                clearPlacedStyle(id); // storage card → 1.0
+                refreshTownArea(prevTown);
+                updateCounts();
+                save();
+            } else {
+                // 無効な場所にドロップ → 元の状態に戻す
+                sourceCard.style.opacity = prevTown ? '0.3' : '1';
+            }
+        });
+    }
+
+    function setupSearch() {
+        document.getElementById('search-box').addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            document.querySelectorAll('#pokemon-storage .pokemon-card').forEach(card => {
+                card.classList.toggle('hidden', !card.dataset.pokemon.toLowerCase().includes(query));
+            });
+        });
+    }
+
+    function updateCounts() {
+        const total = POKEMON_MAP.length;
+        const placed = Object.keys(placements).length;
+        document.getElementById('storage-count').textContent = `${total - placed} / ${total}`;
+
+        document.querySelectorAll('.town-box').forEach((box, idx) => {
+            const count = Object.values(placements).filter(t => t === idx + 1).length;
+            box.querySelector('.town-count').textContent = count > 0 ? `(${count})` : '';
+        });
+    }
+
+    function save() {
+        localStorage.setItem('pokemonPlacement', JSON.stringify(placements));
+        updateCounts();
+    }
+
+    function savePlacement() {
+        save();
+        showToast('✓ 配置を保存しました');
+    }
+
+    function loadPlacement() {
+        const saved = localStorage.getItem('pokemonPlacement');
+        if (!saved) return;
+
+        const data = JSON.parse(saved);
+        Object.assign(placements, data);
+
+        Object.entries(placements).forEach(([id, townIdx]) => {
+            applyPlacedStyle(id);
+            refreshTownArea(townIdx);
+        });
+    }
+
+    function resetPlacement() {
+        if (confirm('配置をリセットしますか？')) {
+            localStorage.removeItem('pokemonPlacement');
+            location.reload();
+        }
+    }
+
+    function showToast(message) {
+        const toast = document.createElement('div');
+        toast.style.cssText = `position:fixed;bottom:20px;right:20px;background:#333;color:white;padding:12px 20px;border-radius:6px;font-size:14px;z-index:9999;animation:slideIn 0.3s ease-out;`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.style.animation = 'slideOut 0.3s ease-out'; setTimeout(() => toast.remove(), 300); }, 2000);
+    }
+
+    const style = document.createElement('style');
+    style.textContent = `@keyframes slideIn{from{transform:translateX(400px);opacity:0}to{transform:translateX(0);opacity:1}}@keyframes slideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(400px);opacity:0}}`;
+    document.head.appendChild(style);
+
+    function switchMobileTown(idx) {
+        document.querySelectorAll('.town-box').forEach(b => b.classList.remove('mobile-active'));
+        document.getElementById(`town-${idx}`).classList.add('mobile-active');
+        document.querySelectorAll('.mobile-tab').forEach((t, i) => {
+            t.classList.toggle('active', i + 1 === idx);
+        });
+    }
+
+    function initializePokemon() {
+        const storage = document.getElementById('pokemon-storage');
+        POKEMON_MAP.forEach(entry => storage.appendChild(createStorageCard(entry)));
+        setupSearch();
+        setupDragDrop();
+        loadPlacement();
+        updateCounts();
+        if (window.innerWidth <= 768) switchMobileTown(1);
+    }
+
+    document.addEventListener('DOMContentLoaded', initializePokemon);
+</script>
+
+</body>
+</html>
