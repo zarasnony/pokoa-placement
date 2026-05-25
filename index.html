@@ -68,22 +68,11 @@
         }
 
         .storage-header {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-bottom: 15px;
+            margin-bottom: 8px;
             flex-shrink: 0;
         }
 
         .storage-header h3 { margin: 0; font-size: 14px; }
-
-        .search-box {
-            padding: 8px 12px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            width: 100%;
-            font-size: 13px;
-        }
 
         .storage-grid {
             display: grid;
@@ -311,7 +300,6 @@
     <div class="left-panel">
         <div class="storage-header">
             <h3>待機中 <span id="storage-count" style="font-weight:normal;font-size:12px;color:#888;"></span></h3>
-            <input type="text" id="search-box" class="search-box" placeholder="検索...">
         </div>
         <div class="storage-grid" id="pokemon-storage"></div>
     </div>
@@ -633,16 +621,7 @@
         });
     }
 
-    function setupSearch() {
-        document.getElementById('search-box').addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase();
-            document.querySelectorAll('#pokemon-storage .pokemon-card').forEach(card => {
-                card.classList.toggle('hidden', !card.dataset.pokemon.toLowerCase().includes(query));
-            });
-        });
-    }
-
-    function updateCounts() {
+function updateCounts() {
         const total = POKEMON_MAP.length;
         const placed = Object.keys(placements).length;
         document.getElementById('storage-count').textContent = `${total - placed} / ${total}`;
@@ -739,7 +718,6 @@
     function initializePokemon() {
         const storage = document.getElementById('pokemon-storage');
         POKEMON_MAP.forEach(entry => storage.appendChild(createStorageCard(entry)));
-        setupSearch();
         setupDragDrop();
         restoreFromLocalStorage();
         updateCounts();
