@@ -68,21 +68,42 @@
         }
 
         .storage-header {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-bottom: 15px;
+            margin-bottom: 8px;
             flex-shrink: 0;
         }
 
         .storage-header h3 { margin: 0; font-size: 14px; }
 
-        .search-box {
-            padding: 8px 12px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            width: 100%;
-            font-size: 13px;
+        .filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin-bottom: 6px;
+            flex-shrink: 0;
+        }
+        .filter-btn {
+            font-size: 10px;
+            padding: 2px 6px;
+            border: 1px solid #aaa;
+            border-radius: 10px;
+            background: #f0f0f0;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+            line-height: 1.4;
+        }
+        .filter-btn.active {
+            background: #4A90E2;
+            color: white;
+            border-color: #4A90E2;
+        }
+        .filter-btn.reset-btn {
+            background: #e2e8f0;
+            border-color: #718096;
+        }
+        .filter-btn.reset-btn.active {
+            background: #718096;
+            color: white;
         }
 
         .storage-grid {
@@ -110,6 +131,7 @@
             justify-content: center;
             cursor: grab;
             user-select: none;
+            -webkit-touch-callout: none;
             touch-action: none;
             transition: transform 0.15s, box-shadow 0.15s;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
@@ -124,6 +146,9 @@
             width: 90%;
             height: 90%;
             object-fit: contain;
+            pointer-events: none;
+            user-select: none;
+            -webkit-touch-callout: none;
         }
 
         .pokemon-name {
@@ -311,8 +336,8 @@
     <div class="left-panel">
         <div class="storage-header">
             <h3>待機中 <span id="storage-count" style="font-weight:normal;font-size:12px;color:#888;"></span></h3>
-            <input type="text" id="search-box" class="search-box" placeholder="検索...">
         </div>
+        <div class="filter-bar" id="filter-bar"></div>
         <div class="storage-grid" id="pokemon-storage"></div>
     </div>
 
@@ -379,6 +404,7 @@
         card.dataset.pokemon = entry.name;
         card.dataset.pokenum = entry.num;
         card.dataset.dex = entry.dex;
+        card.dataset.skills = (entry.skills || []).join(',');
         card.appendChild(createImg(entry.dex, entry.name, entry.img));
         const nameDiv = document.createElement('div');
         nameDiv.className = 'pokemon-name';
@@ -480,6 +506,8 @@
         let indicatorKey = null;
         let autoScrollRAF = null;
         let autoScrollDir = 0;
+        let pending = null; // 待機中カードのタッチ待機状態
+        let isScrolling = false;
 
         function runAutoScroll() {
             if (autoScrollDir !== 0) {
@@ -495,6 +523,22 @@
             if (dir !== 0) autoScrollRAF = requestAnimationFrame(runAutoScroll);
         }
 
+        function beginDrag(card, id, prevTown, clientX, clientY) {
+            const clone = card.cloneNode(true);
+            const size = 55;
+            clone.style.cssText = `position:fixed;width:${size}px;height:${size}px;left:${clientX - size/2}px;top:${clientY - size/2}px;pointer-events:none;z-index:9999;opacity:0.9;transform:scale(1.15);transform-origin:center;box-shadow:0 12px 32px rgba(0,0,0,0.35);border-radius:6px;transition:none;`;
+            document.body.appendChild(clone);
+            card.style.opacity = card.closest('#pokemon-storage') ? '0.3' : '0';
+            drag = { id, clone, sourceCard: card, offsetX: size / 2, offsetY: size / 2, prevTown };
+        }
+
+        function cancelPending() {
+            if (!pending) return;
+            clearTimeout(pending.timer);
+            pending = null;
+            isScrolling = false;
+        }
+
         document.addEventListener('pointerdown', (e) => {
             const card = e.target.closest('.pokemon-card');
             if (!card) return;
@@ -504,24 +548,61 @@
             if (!id) return;
             if (card.closest('#pokemon-storage') && placements[id] !== undefined) return;
 
-            const clone = card.cloneNode(true);
-            const size = 55;
-            clone.style.cssText = `position:fixed;width:${size}px;height:${size}px;left:${e.clientX - size/2}px;top:${e.clientY - size/2}px;pointer-events:none;z-index:9999;opacity:0.9;transform:scale(1.15);transform-origin:center;box-shadow:0 12px 32px rgba(0,0,0,0.35);border-radius:6px;transition:none;`;
-            document.body.appendChild(clone);
+            const prevTown = placements[id];
 
-            card.style.opacity = card.closest('#pokemon-storage') ? '0.3' : '0';
-
-            drag = {
-                id,
-                clone,
-                sourceCard: card,
-                offsetX: size / 2,
-                offsetY: size / 2,
-                prevTown: placements[id],
-            };
+            if (card.closest('#pokemon-storage')) {
+                // 待機リストのカード：長押し判定してからドラッグ開始
+                pending = {
+                    card, id, prevTown,
+                    startX: e.clientX, startY: e.clientY,
+                    lastX: e.clientX, lastY: e.clientY,
+                    velocityLog: [],
+                    timer: setTimeout(() => {
+                        if (!pending) return;
+                        const { card, id, prevTown, lastX, lastY } = pending;
+                        pending = null;
+                        isScrolling = false;
+                        beginDrag(card, id, prevTown, lastX, lastY);
+                    }, 300)
+                };
+            } else {
+                // 街のカード：即ドラッグ
+                beginDrag(card, id, prevTown, e.clientX, e.clientY);
+            }
         }, { passive: false });
 
         document.addEventListener('pointermove', (e) => {
+            if (pending) {
+                const prevY = pending.lastY;
+                pending.lastX = e.clientX;
+                pending.lastY = e.clientY;
+                pending.velocityLog.push({ t: Date.now(), y: e.clientY });
+                if (pending.velocityLog.length > 6) pending.velocityLog.shift();
+
+                const dx = e.clientX - pending.startX;
+                const dy = e.clientY - pending.startY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (!isScrolling && dist > 8) {
+                    if (Math.abs(dy) > Math.abs(dx) * 1.2) {
+                        // 縦方向 → スクロールモード
+                        clearTimeout(pending.timer);
+                        isScrolling = true;
+                    } else {
+                        // 横方向 → 即ドラッグ開始
+                        const { card, id, prevTown } = pending;
+                        cancelPending();
+                        beginDrag(card, id, prevTown, e.clientX, e.clientY);
+                        return;
+                    }
+                }
+
+                if (isScrolling) {
+                    storage.scrollTop -= (e.clientY - prevY);
+                }
+                return;
+            }
+
             if (!drag) return;
 
             drag.clone.style.left = `${e.clientX - drag.offsetX}px`;
@@ -583,6 +664,26 @@
         });
 
         document.addEventListener('pointerup', (e) => {
+            if (pending) {
+                // スクロール中だったらフリック慣性を付ける
+                if (isScrolling && pending.velocityLog.length >= 2) {
+                    const log = pending.velocityLog;
+                    const dt = log[log.length - 1].t - log[0].t;
+                    const dy = log[log.length - 1].y - log[0].y;
+                    if (dt > 0) {
+                        let v = (dy / dt) * 16;
+                        (function inertia() {
+                            if (Math.abs(v) < 0.5) return;
+                            storage.scrollTop -= v;
+                            v *= 0.92;
+                            requestAnimationFrame(inertia);
+                        })();
+                    }
+                }
+                cancelPending();
+                return;
+            }
+
             if (!drag) return;
 
             const under = document.elementFromPoint(e.clientX, e.clientY);
@@ -619,7 +720,12 @@
             }
         });
 
+        document.addEventListener('contextmenu', (e) => {
+            if (e.target.closest('.pokemon-card')) e.preventDefault();
+        });
+
         document.addEventListener('pointercancel', () => {
+            if (pending) { cancelPending(); return; }
             if (!drag) return;
             drag.clone.remove();
             setAutoScroll(0);
@@ -633,16 +739,7 @@
         });
     }
 
-    function setupSearch() {
-        document.getElementById('search-box').addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase();
-            document.querySelectorAll('#pokemon-storage .pokemon-card').forEach(card => {
-                card.classList.toggle('hidden', !card.dataset.pokemon.toLowerCase().includes(query));
-            });
-        });
-    }
-
-    function updateCounts() {
+function updateCounts() {
         const total = POKEMON_MAP.length;
         const placed = Object.keys(placements).length;
         document.getElementById('storage-count').textContent = `${total - placed} / ${total}`;
@@ -736,11 +833,68 @@
         });
     }
 
+    const ALL_SKILLS = ["うるおす","さいばい","もやす","けんちく","きをきる","つぶす","じならし","はつでん","もりあげる","とりひき","さがしもの","ちらかす","しわける","テレポート","そらをとぶ","リサイクル","ゆめしま","ミツあつめ","かんてい","しゅうのう","ばくはつ","あくび","コレクター","パーティー","はっこう","くいしんぼ","DJ","ペイント","しょくにん","レアもの"];
+
+    function setupFilter() {
+        const bar = document.getElementById('filter-bar');
+        const activeFilters = new Set();
+
+        // Only show skills that appear in POKEMON_MAP
+        const usedSkills = new Set(POKEMON_MAP.flatMap(e => e.skills || []));
+        const skills = ALL_SKILLS.filter(s => usedSkills.has(s));
+
+        const resetBtn = document.createElement('button');
+        resetBtn.className = 'filter-btn reset-btn active';
+        resetBtn.textContent = '全て';
+        resetBtn.onclick = () => {
+            activeFilters.clear();
+            updateFilterButtons();
+            applyFilter();
+        };
+        bar.appendChild(resetBtn);
+
+        skills.forEach(skill => {
+            const btn = document.createElement('button');
+            btn.className = 'filter-btn';
+            btn.textContent = skill;
+            btn.dataset.skill = skill;
+            btn.onclick = () => {
+                if (activeFilters.has(skill)) {
+                    activeFilters.delete(skill);
+                } else {
+                    activeFilters.add(skill);
+                }
+                updateFilterButtons();
+                applyFilter();
+            };
+            bar.appendChild(btn);
+        });
+
+        function updateFilterButtons() {
+            resetBtn.classList.toggle('active', activeFilters.size === 0);
+            bar.querySelectorAll('.filter-btn[data-skill]').forEach(btn => {
+                btn.classList.toggle('active', activeFilters.has(btn.dataset.skill));
+            });
+        }
+
+        function applyFilter() {
+            document.querySelectorAll('#pokemon-storage .pokemon-card').forEach(card => {
+                if (activeFilters.size === 0) {
+                    card.classList.remove('hidden');
+                    return;
+                }
+                const cardSkills = (card.dataset.skills || '').split(',').filter(Boolean);
+                const matches = cardSkills.some(s => activeFilters.has(s));
+                card.classList.toggle('hidden', !matches);
+            });
+        }
+    }
+
     function initializePokemon() {
         const storage = document.getElementById('pokemon-storage');
         POKEMON_MAP.forEach(entry => storage.appendChild(createStorageCard(entry)));
-        setupSearch();
         setupDragDrop();
+        setupFilter();
         restoreFromLocalStorage();
         updateCounts();
         if (window.innerWidth <= 768) switchMobileTown(1);
