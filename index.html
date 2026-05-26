@@ -70,40 +70,106 @@
         .storage-header {
             margin-bottom: 8px;
             flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
         .storage-header h3 { margin: 0; font-size: 14px; }
 
-        .filter-bar {
+        .filter-toggle-btn {
+            font-size: 11px;
+            padding: 3px 9px;
+            background: #e2e8f0;
+            color: #4a5568;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s;
+        }
+        .filter-toggle-btn.has-filter {
+            background: #4A90E2;
+            color: white;
+            border-color: #4A90E2;
+        }
+
+        .filter-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 200;
             display: flex;
-            flex-wrap: wrap;
-            gap: 3px;
-            margin-bottom: 6px;
+            align-items: center;
+            justify-content: center;
+        }
+        .filter-overlay.hidden { display: none; }
+
+        .filter-modal {
+            background: white;
+            border-radius: 14px;
+            padding: 14px;
+            width: min(320px, 90vw);
+            max-height: 72vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+        }
+        .filter-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
             flex-shrink: 0;
         }
+        .filter-modal-header span { font-size: 14px; font-weight: bold; color: #2d3748; }
+        .filter-modal-close {
+            background: none;
+            border: none;
+            font-size: 18px;
+            color: #718096;
+            cursor: pointer;
+            padding: 0 4px;
+            line-height: 1;
+        }
+        .filter-modal-body {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .filter-modal-footer {
+            margin-top: 12px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .filter-modal-footer button {
+            font-size: 12px;
+            padding: 5px 20px;
+            background: #e2e8f0;
+            color: #4a5568;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+        }
         .filter-btn {
-            font-size: 10px;
-            padding: 2px 6px;
+            font-size: 12px;
+            padding: 5px 12px;
             border: 1px solid #aaa;
-            border-radius: 10px;
+            border-radius: 12px;
             background: #f0f0f0;
+            color: #333;
             cursor: pointer;
             user-select: none;
+            -webkit-touch-callout: none;
             white-space: nowrap;
             line-height: 1.4;
+            transition: background 0.15s, color 0.15s;
         }
         .filter-btn.active {
             background: #4A90E2;
             color: white;
             border-color: #4A90E2;
-        }
-        .filter-btn.reset-btn {
-            background: #e2e8f0;
-            border-color: #718096;
-        }
-        .filter-btn.reset-btn.active {
-            background: #718096;
-            color: white;
         }
 
         .storage-grid {
@@ -336,8 +402,8 @@
     <div class="left-panel">
         <div class="storage-header">
             <h3>待機中 <span id="storage-count" style="font-weight:normal;font-size:12px;color:#888;"></span></h3>
+            <button id="filter-toggle-btn" class="filter-toggle-btn">絞り込み</button>
         </div>
-        <div class="filter-bar" id="filter-bar"></div>
         <div class="storage-grid" id="pokemon-storage"></div>
     </div>
 
@@ -354,6 +420,7 @@
 <script>
     // placements: { cardId: townIndex(1-5) or null }
     const placements = {};
+    let lastScrollEnd = 0; // スクロール終了時刻（フィルターボタンの誤タップ抑制用）
 
     const PLACEHOLDER_SRC = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#e2e8f0" rx="10"/><text x="50" y="68" text-anchor="middle" font-size="54" font-family="sans-serif" fill="#718096">?</text></svg>')}`;
 
@@ -666,18 +733,21 @@
         document.addEventListener('pointerup', (e) => {
             if (pending) {
                 // スクロール中だったらフリック慣性を付ける
-                if (isScrolling && pending.velocityLog.length >= 2) {
-                    const log = pending.velocityLog;
-                    const dt = log[log.length - 1].t - log[0].t;
-                    const dy = log[log.length - 1].y - log[0].y;
-                    if (dt > 0) {
-                        let v = (dy / dt) * 16;
-                        (function inertia() {
-                            if (Math.abs(v) < 0.5) return;
-                            storage.scrollTop -= v;
-                            v *= 0.92;
-                            requestAnimationFrame(inertia);
-                        })();
+                if (isScrolling) {
+                    lastScrollEnd = Date.now();
+                    if (pending.velocityLog.length >= 2) {
+                        const log = pending.velocityLog;
+                        const dt = log[log.length - 1].t - log[0].t;
+                        const dy = log[log.length - 1].y - log[0].y;
+                        if (dt > 0) {
+                            let v = (dy / dt) * 16;
+                            (function inertia() {
+                                if (Math.abs(v) < 0.5) return;
+                                storage.scrollTop -= v;
+                                v *= 0.92;
+                                requestAnimationFrame(inertia);
+                            })();
+                        }
                     }
                 }
                 cancelPending();
@@ -836,45 +906,66 @@ function updateCounts() {
     const ALL_SKILLS = ["うるおす","さいばい","もやす","けんちく","きをきる","つぶす","じならし","はつでん","もりあげる","とりひき","さがしもの","ちらかす","しわける","テレポート","そらをとぶ","リサイクル","ゆめしま","ミツあつめ","かんてい","しゅうのう","ばくはつ","あくび","コレクター","パーティー","はっこう","くいしんぼ","DJ","ペイント","しょくにん","レアもの"];
 
     function setupFilter() {
-        const bar = document.getElementById('filter-bar');
+        const overlay    = document.getElementById('filter-overlay');
+        const modal      = document.getElementById('filter-modal');
+        const toggleBtn  = document.getElementById('filter-toggle-btn');
+        const closeBtn   = document.getElementById('filter-close-btn');
+        const clearBtn   = document.getElementById('filter-clear-btn');
+        const modalBody  = document.getElementById('filter-modal-body');
         const activeFilters = new Set();
 
-        // Only show skills that appear in POKEMON_MAP
         const usedSkills = new Set(POKEMON_MAP.flatMap(e => e.skills || []));
         const skills = ALL_SKILLS.filter(s => usedSkills.has(s));
 
-        const resetBtn = document.createElement('button');
-        resetBtn.className = 'filter-btn reset-btn active';
-        resetBtn.textContent = '全て';
-        resetBtn.onclick = () => {
-            activeFilters.clear();
-            updateFilterButtons();
-            applyFilter();
-        };
-        bar.appendChild(resetBtn);
-
+        // モーダル内のスキルボタンを生成
         skills.forEach(skill => {
             const btn = document.createElement('button');
             btn.className = 'filter-btn';
             btn.textContent = skill;
             btn.dataset.skill = skill;
-            btn.onclick = () => {
+            btn.addEventListener('pointerdown', (e) => e.stopPropagation()); // オーバーレイへの伝播阻止
+            btn.addEventListener('click', () => {
                 if (activeFilters.has(skill)) {
                     activeFilters.delete(skill);
+                    btn.classList.remove('active');
                 } else {
                     activeFilters.add(skill);
+                    btn.classList.add('active');
                 }
-                updateFilterButtons();
                 applyFilter();
-            };
-            bar.appendChild(btn);
+                updateToggleBtn();
+            });
+            modalBody.appendChild(btn);
         });
 
-        function updateFilterButtons() {
-            resetBtn.classList.toggle('active', activeFilters.size === 0);
-            bar.querySelectorAll('.filter-btn[data-skill]').forEach(btn => {
-                btn.classList.toggle('active', activeFilters.has(btn.dataset.skill));
-            });
+        // フィルターボタン（開く） — スクロール直後の誤タップを抑制
+        toggleBtn.addEventListener('pointerup', (e) => {
+            if (Date.now() - lastScrollEnd < 300) return;
+            overlay.classList.remove('hidden');
+        });
+        toggleBtn.addEventListener('click', (e) => e.preventDefault()); // clickは使わない
+
+        // ✕ ボタン（閉じる）
+        closeBtn.addEventListener('click', () => overlay.classList.add('hidden'));
+
+        // 全てクリア
+        clearBtn.addEventListener('click', () => {
+            activeFilters.clear();
+            modalBody.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            applyFilter();
+            updateToggleBtn();
+        });
+
+        // オーバーレイ背景タップで閉じる（モーダル内のクリックは閉じない）
+        overlay.addEventListener('pointerdown', (e) => {
+            if (e.target === overlay) overlay.classList.add('hidden');
+        });
+        modal.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+        function updateToggleBtn() {
+            const n = activeFilters.size;
+            toggleBtn.textContent = n > 0 ? `絞り込み(${n})` : '絞り込み';
+            toggleBtn.classList.toggle('has-filter', n > 0);
         }
 
         function applyFilter() {
@@ -884,8 +975,7 @@ function updateCounts() {
                     return;
                 }
                 const cardSkills = (card.dataset.skills || '').split(',').filter(Boolean);
-                const matches = cardSkills.some(s => activeFilters.has(s));
-                card.classList.toggle('hidden', !matches);
+                card.classList.toggle('hidden', !cardSkills.some(s => activeFilters.has(s)));
             });
         }
     }
@@ -903,5 +993,17 @@ function updateCounts() {
     document.addEventListener('DOMContentLoaded', initializePokemon);
 </script>
 
+<div id="filter-overlay" class="filter-overlay hidden">
+    <div id="filter-modal" class="filter-modal">
+        <div class="filter-modal-header">
+            <span>得意なことで絞り込み</span>
+            <button class="filter-modal-close" id="filter-close-btn">✕</button>
+        </div>
+        <div class="filter-modal-body" id="filter-modal-body"></div>
+        <div class="filter-modal-footer">
+            <button id="filter-clear-btn">全てクリア</button>
+        </div>
+    </div>
+</div>
 </body>
 </html>
