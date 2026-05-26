@@ -502,6 +502,8 @@
         let indicatorKey = null;
         let autoScrollRAF = null;
         let autoScrollDir = 0;
+        let pending = null; // 待機中カードのタッチ待機状態
+        let isScrolling = false;
 
         function runAutoScroll() {
             if (autoScrollDir !== 0) {
@@ -517,6 +519,22 @@
             if (dir !== 0) autoScrollRAF = requestAnimationFrame(runAutoScroll);
         }
 
+        function beginDrag(card, id, prevTown, clientX, clientY) {
+            const clone = card.cloneNode(true);
+            const size = 55;
+            clone.style.cssText = `position:fixed;width:${size}px;height:${size}px;left:${clientX - size/2}px;top:${clientY - size/2}px;pointer-events:none;z-index:9999;opacity:0.9;transform:scale(1.15);transform-origin:center;box-shadow:0 12px 32px rgba(0,0,0,0.35);border-radius:6px;transition:none;`;
+            document.body.appendChild(clone);
+            card.style.opacity = card.closest('#pokemon-storage') ? '0.3' : '0';
+            drag = { id, clone, sourceCard: card, offsetX: size / 2, offsetY: size / 2, prevTown };
+        }
+
+        function cancelPending() {
+            if (!pending) return;
+            clearTimeout(pending.timer);
+            pending = null;
+            isScrolling = false;
+        }
+
         document.addEventListener('pointerdown', (e) => {
             const card = e.target.closest('.pokemon-card');
             if (!card) return;
@@ -526,24 +544,61 @@
             if (!id) return;
             if (card.closest('#pokemon-storage') && placements[id] !== undefined) return;
 
-            const clone = card.cloneNode(true);
-            const size = 55;
-            clone.style.cssText = `position:fixed;width:${size}px;height:${size}px;left:${e.clientX - size/2}px;top:${e.clientY - size/2}px;pointer-events:none;z-index:9999;opacity:0.9;transform:scale(1.15);transform-origin:center;box-shadow:0 12px 32px rgba(0,0,0,0.35);border-radius:6px;transition:none;`;
-            document.body.appendChild(clone);
+            const prevTown = placements[id];
 
-            card.style.opacity = card.closest('#pokemon-storage') ? '0.3' : '0';
-
-            drag = {
-                id,
-                clone,
-                sourceCard: card,
-                offsetX: size / 2,
-                offsetY: size / 2,
-                prevTown: placements[id],
-            };
+            if (card.closest('#pokemon-storage')) {
+                // 待機リストのカード：長押し判定してからドラッグ開始
+                pending = {
+                    card, id, prevTown,
+                    startX: e.clientX, startY: e.clientY,
+                    lastX: e.clientX, lastY: e.clientY,
+                    velocityLog: [],
+                    timer: setTimeout(() => {
+                        if (!pending) return;
+                        const { card, id, prevTown, lastX, lastY } = pending;
+                        pending = null;
+                        isScrolling = false;
+                        beginDrag(card, id, prevTown, lastX, lastY);
+                    }, 300)
+                };
+            } else {
+                // 街のカード：即ドラッグ
+                beginDrag(card, id, prevTown, e.clientX, e.clientY);
+            }
         }, { passive: false });
 
         document.addEventListener('pointermove', (e) => {
+            if (pending) {
+                const prevY = pending.lastY;
+                pending.lastX = e.clientX;
+                pending.lastY = e.clientY;
+                pending.velocityLog.push({ t: Date.now(), y: e.clientY });
+                if (pending.velocityLog.length > 6) pending.velocityLog.shift();
+
+                const dx = e.clientX - pending.startX;
+                const dy = e.clientY - pending.startY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (!isScrolling && dist > 8) {
+                    if (Math.abs(dy) > Math.abs(dx) * 1.2) {
+                        // 縦方向 → スクロールモード
+                        clearTimeout(pending.timer);
+                        isScrolling = true;
+                    } else {
+                        // 横方向 → 即ドラッグ開始
+                        const { card, id, prevTown } = pending;
+                        cancelPending();
+                        beginDrag(card, id, prevTown, e.clientX, e.clientY);
+                        return;
+                    }
+                }
+
+                if (isScrolling) {
+                    storage.scrollTop -= (e.clientY - prevY);
+                }
+                return;
+            }
+
             if (!drag) return;
 
             drag.clone.style.left = `${e.clientX - drag.offsetX}px`;
@@ -605,6 +660,26 @@
         });
 
         document.addEventListener('pointerup', (e) => {
+            if (pending) {
+                // スクロール中だったらフリック慣性を付ける
+                if (isScrolling && pending.velocityLog.length >= 2) {
+                    const log = pending.velocityLog;
+                    const dt = log[log.length - 1].t - log[0].t;
+                    const dy = log[log.length - 1].y - log[0].y;
+                    if (dt > 0) {
+                        let v = (dy / dt) * 16;
+                        (function inertia() {
+                            if (Math.abs(v) < 0.5) return;
+                            storage.scrollTop -= v;
+                            v *= 0.92;
+                            requestAnimationFrame(inertia);
+                        })();
+                    }
+                }
+                cancelPending();
+                return;
+            }
+
             if (!drag) return;
 
             const under = document.elementFromPoint(e.clientX, e.clientY);
@@ -642,6 +717,7 @@
         });
 
         document.addEventListener('pointercancel', () => {
+            if (pending) { cancelPending(); return; }
             if (!drag) return;
             drag.clone.remove();
             setAutoScroll(0);
