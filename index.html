@@ -74,6 +74,38 @@
 
         .storage-header h3 { margin: 0; font-size: 14px; }
 
+        .filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin-bottom: 6px;
+            flex-shrink: 0;
+        }
+        .filter-btn {
+            font-size: 10px;
+            padding: 2px 6px;
+            border: 1px solid #aaa;
+            border-radius: 10px;
+            background: #f0f0f0;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+            line-height: 1.4;
+        }
+        .filter-btn.active {
+            background: #4A90E2;
+            color: white;
+            border-color: #4A90E2;
+        }
+        .filter-btn.reset-btn {
+            background: #e2e8f0;
+            border-color: #718096;
+        }
+        .filter-btn.reset-btn.active {
+            background: #718096;
+            color: white;
+        }
+
         .storage-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -301,6 +333,7 @@
         <div class="storage-header">
             <h3>待機中 <span id="storage-count" style="font-weight:normal;font-size:12px;color:#888;"></span></h3>
         </div>
+        <div class="filter-bar" id="filter-bar"></div>
         <div class="storage-grid" id="pokemon-storage"></div>
     </div>
 
@@ -367,6 +400,7 @@
         card.dataset.pokemon = entry.name;
         card.dataset.pokenum = entry.num;
         card.dataset.dex = entry.dex;
+        card.dataset.skills = (entry.skills || []).join(',');
         card.appendChild(createImg(entry.dex, entry.name, entry.img));
         const nameDiv = document.createElement('div');
         nameDiv.className = 'pokemon-name';
@@ -715,10 +749,68 @@ function updateCounts() {
         });
     }
 
+    const ALL_SKILLS = ["うるおす","さいばい","もやす","けんちく","きをきる","つぶす","じならし","はつでん","もりあげる","とりひき","さがしもの","ちらかす","しわける","テレポート","そらをとぶ","リサイクル","ゆめしま","ミツあつめ","かんてい","しゅうのう","ばくはつ","あくび","コレクター","パーティー","はっこう","くいしんぼ","DJ","ペイント","しょくにん","レアもの"];
+
+    function setupFilter() {
+        const bar = document.getElementById('filter-bar');
+        const activeFilters = new Set();
+
+        // Only show skills that appear in POKEMON_MAP
+        const usedSkills = new Set(POKEMON_MAP.flatMap(e => e.skills || []));
+        const skills = ALL_SKILLS.filter(s => usedSkills.has(s));
+
+        const resetBtn = document.createElement('button');
+        resetBtn.className = 'filter-btn reset-btn active';
+        resetBtn.textContent = '全て';
+        resetBtn.onclick = () => {
+            activeFilters.clear();
+            updateFilterButtons();
+            applyFilter();
+        };
+        bar.appendChild(resetBtn);
+
+        skills.forEach(skill => {
+            const btn = document.createElement('button');
+            btn.className = 'filter-btn';
+            btn.textContent = skill;
+            btn.dataset.skill = skill;
+            btn.onclick = () => {
+                if (activeFilters.has(skill)) {
+                    activeFilters.delete(skill);
+                } else {
+                    activeFilters.add(skill);
+                }
+                updateFilterButtons();
+                applyFilter();
+            };
+            bar.appendChild(btn);
+        });
+
+        function updateFilterButtons() {
+            resetBtn.classList.toggle('active', activeFilters.size === 0);
+            bar.querySelectorAll('.filter-btn[data-skill]').forEach(btn => {
+                btn.classList.toggle('active', activeFilters.has(btn.dataset.skill));
+            });
+        }
+
+        function applyFilter() {
+            document.querySelectorAll('#pokemon-storage .pokemon-card').forEach(card => {
+                if (activeFilters.size === 0) {
+                    card.classList.remove('hidden');
+                    return;
+                }
+                const cardSkills = (card.dataset.skills || '').split(',').filter(Boolean);
+                const matches = cardSkills.some(s => activeFilters.has(s));
+                card.classList.toggle('hidden', !matches);
+            });
+        }
+    }
+
     function initializePokemon() {
         const storage = document.getElementById('pokemon-storage');
         POKEMON_MAP.forEach(entry => storage.appendChild(createStorageCard(entry)));
         setupDragDrop();
+        setupFilter();
         restoreFromLocalStorage();
         updateCounts();
         if (window.innerWidth <= 768) switchMobileTown(1);
