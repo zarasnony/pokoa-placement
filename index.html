@@ -44,8 +44,11 @@
             cursor: pointer;
             font-size: 14px;
             transition: background 0.2s;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
+        button:focus { outline: none; }
         button:hover { background: #357abd; }
 
         .main-container {
@@ -613,7 +616,18 @@
 
             const id = card.dataset.originId || card.id;
             if (!id) return;
-            if (card.closest('#pokemon-storage') && placements[id] !== undefined) return;
+
+            // 配置済みカード（半透明）はドラッグ不可なので即スクロールモードに
+            if (card.closest('#pokemon-storage') && placements[id] !== undefined) {
+                pending = {
+                    card, id, prevTown: placements[id],
+                    startX: e.clientX, startY: e.clientY,
+                    lastX: e.clientX, lastY: e.clientY,
+                    velocityLog: [], timer: null
+                };
+                isScrolling = true;
+                return;
+            }
 
             const prevTown = placements[id];
 
