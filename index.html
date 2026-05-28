@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>ぽこあ ポケモン配置シミュレーター</title>
     <style>
         * { box-sizing: border-box; }
@@ -16,6 +16,7 @@
             flex-direction: column;
             height: 100vh;
             overflow: hidden;
+            touch-action: manipulation;
         }
 
         .header {
@@ -612,6 +613,22 @@
         }
 
         document.addEventListener('pointerdown', (e) => {
+            // 2本目以降の指（ピンチ・ズーム等）が来たら現在のアクションをキャンセル
+            if (!e.isPrimary) {
+                if (pending) cancelPending();
+                if (drag) {
+                    drag.clone.remove();
+                    setAutoScroll(null, 0);
+                    clearInsertIndicators();
+                    indicatorKey = null;
+                    document.querySelectorAll('.town-box.drag-over').forEach(b => b.classList.remove('drag-over'));
+                    storage.classList.remove('drag-over');
+                    drag.sourceCard.style.opacity = '';
+                    drag = null;
+                }
+                return;
+            }
+
             const card = e.target.closest('.pokemon-card');
             if (!card) return;
             e.preventDefault();
