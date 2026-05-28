@@ -348,6 +348,101 @@
             to   { border-color: #63b3ed; background: rgba(74,144,226,0.2); }
         }
 
+        /* ── スクショモード ── */
+        .ss-bar {
+            display: none;
+            flex-shrink: 0;
+            background: #2d3748;
+            padding: 8px 10px;
+        }
+        .ss-bar-inner {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .ss-tab {
+            flex: 1 1 0%;
+            padding: 6px 4px;
+            font-size: 11px;
+            background: #4a5568;
+            color: #e2e8f0;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            line-height: 1.3;
+            text-align: center;
+            white-space: nowrap;
+        }
+        .ss-tab.active {
+            background: #4A90E2;
+            color: white;
+        }
+        .ss-exit {
+            background: #718096;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        body.screenshot-mode .header { display: none; }
+        body.screenshot-mode .mobile-tab-bar { display: none !important; }
+        body.screenshot-mode .left-panel { display: none; }
+        body.screenshot-mode .ss-bar { display: flex; }
+
+        body.screenshot-mode .main-container {
+            padding: 10px;
+            gap: 0;
+        }
+
+        body.screenshot-mode .right-panel {
+            display: flex !important;
+            flex-wrap: nowrap;
+            overflow: hidden;
+        }
+
+        body.screenshot-mode .town-box {
+            display: none !important;
+            flex: 1;
+        }
+        body.screenshot-mode .town-box.ss-active {
+            display: flex !important;
+            border: none;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        body.screenshot-mode .town-pokemon-area {
+            overflow-y: auto;
+            grid-template-columns: repeat(auto-fill, 52px);
+        }
+
+        body.screenshot-mode .pokemon-name {
+            display: block;
+            font-size: 9px;
+            color: #555;
+            text-align: center;
+            line-height: 1.2;
+            margin-top: 1px;
+            width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        body.screenshot-mode .pokemon-card {
+            width: 52px;
+            height: auto;
+            aspect-ratio: unset;
+            padding-bottom: 4px;
+        }
+        body.screenshot-mode .pokemon-card .pokemon-img {
+            width: 40px;
+            height: 40px;
+        }
+
         /* ── モバイルタブバー（デスクトップでは非表示）── */
         .mobile-tab-bar { display: none; }
 
@@ -434,6 +529,7 @@
         <button onclick="loadPlacement()">📂 読込</button>
         <button onclick="sortAll()">↕ ソート</button>
         <button onclick="resetPlacement()">🔄 リセット</button>
+        <button onclick="toggleScreenshotMode()">📸</button>
     </div>
 </div>
 
@@ -1152,8 +1248,32 @@ function updateCounts() {
         if (window.innerWidth <= 768) switchMobileTown(1);
     }
 
+    function switchSsTown(idx) {
+        document.querySelectorAll('.town-box').forEach(b => b.classList.remove('ss-active'));
+        document.getElementById(`town-${idx}`).classList.add('ss-active');
+        document.querySelectorAll('.ss-tab').forEach((t, i) => t.classList.toggle('active', i + 1 === idx));
+    }
+
+    function toggleScreenshotMode() {
+        const entering = !document.body.classList.contains('screenshot-mode');
+        document.body.classList.toggle('screenshot-mode');
+        if (entering) switchSsTown(1);
+    }
+
     document.addEventListener('DOMContentLoaded', initializePokemon);
 </script>
+
+<div class="ss-bar">
+    <div class="ss-bar-inner">
+        <button class="ss-tab" onclick="switchSsTown(1)">こうや</button>
+        <button class="ss-tab" onclick="switchSsTown(2)">うみべ</button>
+        <button class="ss-tab" onclick="switchSsTown(3)">やま</button>
+        <button class="ss-tab" onclick="switchSsTown(4)">うきしま</button>
+        <button class="ss-tab" onclick="switchSsTown(5)">まっさら</button>
+
+        <button class="ss-exit" onclick="toggleScreenshotMode()">✕</button>
+    </div>
+</div>
 
 <div id="filter-overlay" class="filter-overlay hidden">
     <div id="filter-modal" class="filter-modal">
