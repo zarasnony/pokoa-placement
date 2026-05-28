@@ -176,6 +176,49 @@
             border-color: #4A90E2;
         }
 
+        .skills-popup {
+            position: fixed;
+            z-index: 10000;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 10px 12px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.2);
+            max-width: 200px;
+            pointer-events: none;
+        }
+        .skills-popup-name {
+            font-size: 13px;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 6px;
+            text-align: center;
+        }
+        .skills-popup-skills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            justify-content: center;
+        }
+        .skills-popup-skills span {
+            font-size: 11px;
+            background: #ebf8ff;
+            color: #2b6cb0;
+            border: 1px solid #bee3f8;
+            border-radius: 8px;
+            padding: 2px 8px;
+            white-space: nowrap;
+        }
+        .skills-popup-no-skills {
+            font-size: 11px;
+            color: #a0aec0;
+            text-align: center;
+        }
+
+        .filter-dimmed {
+            opacity: 0.2;
+        }
+
         .storage-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -424,6 +467,7 @@
 <script>
     // placements: { cardId: townIndex(1-5) or null }
     const placements = {};
+    let applyFilter = () => {}; // setupFilter後に上書き
     let lastScrollEnd = 0; // スクロール終了時刻（フィルターボタンの誤タップ抑制用）
 
     const PLACEHOLDER_SRC = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#e2e8f0" rx="10"/><text x="50" y="68" text-anchor="middle" font-size="54" font-family="sans-serif" fill="#718096">?</text></svg>')}`;
@@ -492,6 +536,7 @@
         card.dataset.originId = cardId(entry);
         card.dataset.pokemon = entry.name;
         card.dataset.dex = entry.dex;
+        card.dataset.skills = (entry.skills || []).join(',');
         card.appendChild(createImg(entry.dex, entry.name, entry.img));
         const nameDiv = document.createElement('div');
         nameDiv.className = 'pokemon-name';
@@ -524,6 +569,7 @@
             .filter(Boolean);
 
         entries.forEach(entry => area.appendChild(createTownCard(entry)));
+        applyFilter();
     }
 
     function sortAll() {
@@ -667,7 +713,7 @@
                         pending = null;
                         isScrolling = false;
                         beginDrag(card, id, prevTown, lastX, lastY);
-                    }, 180)
+                    }, 150)
                 };
             } else {
                 // 街のカード：長押し判定してからドラッグ開始
@@ -684,7 +730,7 @@
                         pending = null;
                         isScrolling = false;
                         beginDrag(card, id, prevTown, lastX, lastY);
-                    }, 180)
+                    }, 150)
                 };
             }
         }, { passive: false });
@@ -701,18 +747,11 @@
                 const dy = e.clientY - pending.startY;
                 const dist = Math.sqrt(dx * dx + dy * dy);
 
-                if (!isScrolling && dist > 8) {
-                    if (Math.abs(dy) > Math.abs(dx) * 1.2) {
-                        // 縦方向 → スクロールモード
-                        clearTimeout(pending.timer);
-                        isScrolling = true;
-                    } else {
-                        // 横方向 → 即ドラッグ開始
-                        const { card, id, prevTown } = pending;
-                        cancelPending();
-                        beginDrag(card, id, prevTown, e.clientX, e.clientY);
-                        return;
-                    }
+                if (!isScrolling && dist > 5) {
+                    // 少しでも動いたらスクロールモード（方向問わず）
+                    clearTimeout(pending.timer);
+                    pending.timer = null;
+                    isScrolling = true;
                 }
 
                 if (isScrolling) {
@@ -792,6 +831,15 @@
 
         document.addEventListener('pointerup', (e) => {
             if (pending) {
+                // 移動量が小さければタップ → スキル表示
+                const dx = e.clientX - pending.startX;
+                const dy = e.clientY - pending.startY;
+                if (dx * dx + dy * dy < 64) {
+                    const entry = getEntryByCardId(pending.id);
+                    if (entry) showSkillsPopup(entry, e.clientX, e.clientY);
+                    cancelPending();
+                    return;
+                }
                 // スクロール中だったらフリック慣性を付ける
                 if (isScrolling) {
                     lastScrollEnd = Date.now();
@@ -817,7 +865,7 @@
 
             if (!drag) return;
 
-            // タップ（ほぼ動いていない）はキャンセル扱い
+            // 長押し後に動かさず離した → スキル表示
             if (!drag.hasMoved) {
                 drag.clone.remove();
                 setAutoScroll(null, 0);
@@ -826,7 +874,9 @@
                 document.querySelectorAll('.town-box.drag-over').forEach(b => b.classList.remove('drag-over'));
                 storage.classList.remove('drag-over');
                 drag.sourceCard.style.opacity = '';
+                const entry = getEntryByCardId(drag.id);
                 drag = null;
+                if (entry) showSkillsPopup(entry, e.clientX, e.clientY);
                 return;
             }
 
@@ -886,7 +936,13 @@
 function updateCounts() {
         const total = POKEMON_MAP.length;
         const placed = Object.keys(placements).length;
-        document.getElementById('storage-count').textContent = `${total - placed} / ${total}`;
+        const storageCards = [...document.querySelectorAll('#pokemon-storage .pokemon-card')];
+        const visibleCards = storageCards.filter(c => !c.classList.contains('hidden'));
+        const isFiltered = visibleCards.length < storageCards.length;
+        const countText = isFiltered
+            ? `${visibleCards.filter(c => c.style.opacity !== '0.3').length} / ${visibleCards.length}`
+            : `${total - placed} / ${total}`;
+        document.getElementById('storage-count').textContent = countText;
 
         document.querySelectorAll('.town-box').forEach((box, idx) => {
             const count = Object.values(placements).filter(t => t === idx + 1).length;
@@ -969,6 +1025,32 @@ function updateCounts() {
     style.textContent = `@keyframes slideIn{from{transform:translateX(400px);opacity:0}to{transform:translateX(0);opacity:1}}@keyframes slideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(400px);opacity:0}}`;
     document.head.appendChild(style);
 
+    function showSkillsPopup(entry, x, y) {
+        document.getElementById('skills-popup')?.remove();
+        const popup = document.createElement('div');
+        popup.id = 'skills-popup';
+        popup.className = 'skills-popup';
+        const skills = entry.skills || [];
+        popup.innerHTML = `<div class="skills-popup-name">${entry.name}</div>` +
+            (skills.length
+                ? `<div class="skills-popup-skills">${skills.map(s => `<span>${s}</span>`).join('')}</div>`
+                : `<div class="skills-popup-no-skills">得意なことなし</div>`);
+        document.body.appendChild(popup);
+
+        const r = popup.getBoundingClientRect();
+        let left = x - r.width / 2;
+        let top  = y - r.height - 14;
+        if (left < 8) left = 8;
+        if (left + r.width > window.innerWidth - 8) left = window.innerWidth - r.width - 8;
+        if (top < 8) top = y + 14;
+        popup.style.left = left + 'px';
+        popup.style.top  = top  + 'px';
+
+        setTimeout(() => {
+            document.addEventListener('pointerdown', () => document.getElementById('skills-popup')?.remove(), { once: true });
+        }, 0);
+    }
+
     function switchMobileTown(idx) {
         document.querySelectorAll('.town-box').forEach(b => b.classList.remove('mobile-active'));
         document.getElementById(`town-${idx}`).classList.add('mobile-active');
@@ -1043,16 +1125,21 @@ function updateCounts() {
             toggleBtn.classList.toggle('has-filter', n > 0);
         }
 
-        function applyFilter() {
+        applyFilter = function() {
+            const hasFilter = activeFilters.size > 0;
             document.querySelectorAll('#pokemon-storage .pokemon-card').forEach(card => {
-                if (activeFilters.size === 0) {
-                    card.classList.remove('hidden');
-                    return;
-                }
-                const cardSkills = (card.dataset.skills || '').split(',').filter(Boolean);
-                card.classList.toggle('hidden', !cardSkills.some(s => activeFilters.has(s)));
+                if (!hasFilter) { card.classList.remove('hidden'); return; }
+                const skills = (card.dataset.skills || '').split(',').filter(Boolean);
+                card.classList.toggle('hidden', !skills.some(s => activeFilters.has(s)));
             });
-        }
+            document.querySelectorAll('.town-pokemon-area .pokemon-card').forEach(card => {
+                card.classList.remove('hidden');
+                if (!hasFilter) { card.classList.remove('filter-dimmed'); return; }
+                const skills = (card.dataset.skills || '').split(',').filter(Boolean);
+                card.classList.toggle('filter-dimmed', !skills.some(s => activeFilters.has(s)));
+            });
+            updateCounts();
+        };
     }
 
     function initializePokemon() {
