@@ -578,19 +578,21 @@
         let autoScrollDir = 0;
         let pending = null; // 待機中カードのタッチ待機状態
         let isScrolling = false;
+        let autoScrollContainer = null;
 
         function runAutoScroll() {
-            if (autoScrollDir !== 0) {
-                storage.scrollTop += autoScrollDir * 7;
+            if (autoScrollDir !== 0 && autoScrollContainer) {
+                autoScrollContainer.scrollTop += autoScrollDir * 7;
                 autoScrollRAF = requestAnimationFrame(runAutoScroll);
             }
         }
 
-        function setAutoScroll(dir) {
-            if (dir === autoScrollDir) return;
+        function setAutoScroll(container, dir) {
+            if (dir === autoScrollDir && container === autoScrollContainer) return;
             autoScrollDir = dir;
+            autoScrollContainer = container;
             if (autoScrollRAF) { cancelAnimationFrame(autoScrollRAF); autoScrollRAF = null; }
-            if (dir !== 0) autoScrollRAF = requestAnimationFrame(runAutoScroll);
+            if (dir !== 0 && container) autoScrollRAF = requestAnimationFrame(runAutoScroll);
         }
 
         function beginDrag(card, id, prevTown, clientX, clientY) {
@@ -689,14 +691,22 @@
             drag.clone.style.left = `${e.clientX - drag.offsetX}px`;
             drag.clone.style.top  = `${e.clientY - drag.offsetY}px`;
 
-            const sr = storage.getBoundingClientRect();
             const scrollZone = 60;
-            if (e.clientX >= sr.left && e.clientX <= sr.right && e.clientY >= sr.top && e.clientY <= sr.bottom) {
-                if (e.clientY < sr.top + scrollZone) setAutoScroll(-1);
-                else if (e.clientY > sr.bottom - scrollZone) setAutoScroll(1);
-                else setAutoScroll(0);
+            const sr = storage.getBoundingClientRect();
+            const townArea = document.elementFromPoint(e.clientX, e.clientY)
+                              ?.closest('.town-pokemon-area');
+            if (e.clientX >= sr.left && e.clientX <= sr.right &&
+                e.clientY >= sr.top  && e.clientY <= sr.bottom) {
+                if (e.clientY < sr.top + scrollZone) setAutoScroll(storage, -1);
+                else if (e.clientY > sr.bottom - scrollZone) setAutoScroll(storage, 1);
+                else setAutoScroll(null, 0);
+            } else if (townArea) {
+                const tr = townArea.getBoundingClientRect();
+                if (e.clientY < tr.top + scrollZone) setAutoScroll(townArea, -1);
+                else if (e.clientY > tr.bottom - scrollZone) setAutoScroll(townArea, 1);
+                else setAutoScroll(null, 0);
             } else {
-                setAutoScroll(0);
+                setAutoScroll(null, 0);
             }
 
             const under = document.elementFromPoint(e.clientX, e.clientY);
@@ -775,7 +785,7 @@
             const inStorage = under?.closest('.left-panel');
 
             drag.clone.remove();
-            setAutoScroll(0);
+            setAutoScroll(null, 0);
             clearInsertIndicators();
             indicatorKey = null;
             document.querySelectorAll('.town-box.drag-over').forEach(b => b.classList.remove('drag-over'));
@@ -812,7 +822,7 @@
             if (pending) { cancelPending(); return; }
             if (!drag) return;
             drag.clone.remove();
-            setAutoScroll(0);
+            setAutoScroll(null, 0);
             clearInsertIndicators();
             indicatorKey = null;
             document.querySelectorAll('.town-box.drag-over').forEach(b => b.classList.remove('drag-over'));
