@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>ぽこあ ポケモン配置シミュレーター</title>
     <style>
         * { box-sizing: border-box; }
@@ -16,6 +16,7 @@
             flex-direction: column;
             height: 100vh;
             overflow: hidden;
+            touch-action: manipulation;
         }
 
         .header {
@@ -612,6 +613,22 @@
         }
 
         document.addEventListener('pointerdown', (e) => {
+            // 2本目以降の指（ピンチ・ズーム等）が来たら現在のアクションをキャンセル
+            if (!e.isPrimary) {
+                if (pending) cancelPending();
+                if (drag) {
+                    drag.clone.remove();
+                    setAutoScroll(null, 0);
+                    clearInsertIndicators();
+                    indicatorKey = null;
+                    document.querySelectorAll('.town-box.drag-over').forEach(b => b.classList.remove('drag-over'));
+                    storage.classList.remove('drag-over');
+                    drag.sourceCard.style.opacity = '';
+                    drag = null;
+                }
+                return;
+            }
+
             const card = e.target.closest('.pokemon-card');
             if (!card) return;
             e.preventDefault();
@@ -649,8 +666,22 @@
                     }, 180)
                 };
             } else {
-                // 街のカード：即ドラッグ
-                beginDrag(card, id, prevTown, e.clientX, e.clientY);
+                // 街のカード：長押し判定してからドラッグ開始
+                const scrollContainer = card.closest('.town-pokemon-area');
+                pending = {
+                    card, id, prevTown,
+                    startX: e.clientX, startY: e.clientY,
+                    lastX: e.clientX, lastY: e.clientY,
+                    velocityLog: [],
+                    scrollContainer,
+                    timer: setTimeout(() => {
+                        if (!pending) return;
+                        const { card, id, prevTown, lastX, lastY } = pending;
+                        pending = null;
+                        isScrolling = false;
+                        beginDrag(card, id, prevTown, lastX, lastY);
+                    }, 180)
+                };
             }
         }, { passive: false });
 
@@ -681,7 +712,8 @@
                 }
 
                 if (isScrolling) {
-                    storage.scrollTop -= (e.clientY - prevY);
+                    const sc = pending.scrollContainer || storage;
+                    sc.scrollTop -= (e.clientY - prevY);
                 }
                 return;
             }
@@ -698,15 +730,9 @@
             drag.clone.style.top  = `${e.clientY - drag.offsetY}px`;
 
             const scrollZone = 60;
-            const sr = storage.getBoundingClientRect();
             const townArea = document.elementFromPoint(e.clientX, e.clientY)
                               ?.closest('.town-pokemon-area');
-            if (e.clientX >= sr.left && e.clientX <= sr.right &&
-                e.clientY >= sr.top  && e.clientY <= sr.bottom) {
-                if (e.clientY < sr.top + scrollZone) setAutoScroll(storage, -1);
-                else if (e.clientY > sr.bottom - scrollZone) setAutoScroll(storage, 1);
-                else setAutoScroll(null, 0);
-            } else if (townArea) {
+            if (townArea) {
                 const tr = townArea.getBoundingClientRect();
                 if (e.clientY < tr.top + scrollZone) setAutoScroll(townArea, -1);
                 else if (e.clientY > tr.bottom - scrollZone) setAutoScroll(townArea, 1);
@@ -771,9 +797,10 @@
                         const dy = log[log.length - 1].y - log[0].y;
                         if (dt > 0) {
                             let v = (dy / dt) * 16;
+                            const sc = pending.scrollContainer || storage;
                             (function inertia() {
                                 if (Math.abs(v) < 0.5) return;
-                                storage.scrollTop -= v;
+                                sc.scrollTop -= v;
                                 v *= 0.92;
                                 requestAnimationFrame(inertia);
                             })();
