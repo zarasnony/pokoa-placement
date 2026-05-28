@@ -601,7 +601,7 @@
             clone.style.cssText = `position:fixed;width:${size}px;height:${size}px;left:${clientX - size/2}px;top:${clientY - size/2}px;pointer-events:none;z-index:9999;opacity:0.9;transform:scale(1.15);transform-origin:center;box-shadow:0 12px 32px rgba(0,0,0,0.35);border-radius:6px;transition:none;`;
             document.body.appendChild(clone);
             card.style.opacity = card.closest('#pokemon-storage') ? '0.3' : '0';
-            drag = { id, clone, sourceCard: card, offsetX: size / 2, offsetY: size / 2, prevTown };
+            drag = { id, clone, sourceCard: card, offsetX: size / 2, offsetY: size / 2, prevTown, startX: clientX, startY: clientY, hasMoved: false };
         }
 
         function cancelPending() {
@@ -687,6 +687,12 @@
             }
 
             if (!drag) return;
+
+            if (!drag.hasMoved) {
+                const dx = e.clientX - drag.startX;
+                const dy = e.clientY - drag.startY;
+                if (dx * dx + dy * dy > 64) drag.hasMoved = true; // 8px²
+            }
 
             drag.clone.style.left = `${e.clientX - drag.offsetX}px`;
             drag.clone.style.top  = `${e.clientY - drag.offsetY}px`;
@@ -779,6 +785,19 @@
             }
 
             if (!drag) return;
+
+            // タップ（ほぼ動いていない）はキャンセル扱い
+            if (!drag.hasMoved) {
+                drag.clone.remove();
+                setAutoScroll(null, 0);
+                clearInsertIndicators();
+                indicatorKey = null;
+                document.querySelectorAll('.town-box.drag-over').forEach(b => b.classList.remove('drag-over'));
+                storage.classList.remove('drag-over');
+                drag.sourceCard.style.opacity = '';
+                drag = null;
+                return;
+            }
 
             const under = document.elementFromPoint(e.clientX, e.clientY);
             const townBox = under?.closest('.town-box');
