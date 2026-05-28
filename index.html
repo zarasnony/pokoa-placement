@@ -630,7 +630,7 @@
                         pending = null;
                         isScrolling = false;
                         beginDrag(card, id, prevTown, lastX, lastY);
-                    }, 300)
+                    }, 180)
                 };
             } else {
                 // 街のカード：即ドラッグ
@@ -939,9 +939,10 @@ function updateCounts() {
         });
 
         // フィルターボタン（開く） — スクロール直後の誤タップを抑制
+        // setTimeout で1フレーム遅らせてタップのclick伝播をモーダルに届かせない
         toggleBtn.addEventListener('pointerup', (e) => {
             if (Date.now() - lastScrollEnd < 300) return;
-            overlay.classList.remove('hidden');
+            setTimeout(() => overlay.classList.remove('hidden'), 50);
         });
         toggleBtn.addEventListener('click', (e) => e.preventDefault()); // clickは使わない
 
