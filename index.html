@@ -580,6 +580,7 @@
         let pending = null; // 待機中カードのタッチ待機状態
         let isScrolling = false;
         let autoScrollContainer = null;
+        let inertiaRAF = null; // フリック慣性のRAFハンドル（キャンセル用）
 
         function runAutoScroll() {
             if (autoScrollDir !== 0 && autoScrollContainer) {
@@ -613,6 +614,9 @@
         }
 
         document.addEventListener('pointerdown', (e) => {
+            // 新しいタッチが来たらフリック慣性をキャンセル
+            if (inertiaRAF) { cancelAnimationFrame(inertiaRAF); inertiaRAF = null; }
+
             // 2本目以降の指（ピンチ・ズーム等）が来たら現在のアクションをキャンセル
             if (!e.isPrimary) {
                 if (pending) cancelPending();
@@ -713,7 +717,7 @@
 
                 if (isScrolling) {
                     const sc = pending.scrollContainer || storage;
-                    sc.scrollTop -= (e.clientY - prevY);
+                    sc.scrollBy(0, prevY - e.clientY);
                 }
                 return;
             }
@@ -799,10 +803,10 @@
                             let v = (dy / dt) * 16;
                             const sc = pending.scrollContainer || storage;
                             (function inertia() {
-                                if (Math.abs(v) < 0.5) return;
-                                sc.scrollTop -= v;
+                                if (Math.abs(v) < 0.5) { inertiaRAF = null; return; }
+                                sc.scrollBy(0, -v);
                                 v *= 0.92;
-                                requestAnimationFrame(inertia);
+                                inertiaRAF = requestAnimationFrame(inertia);
                             })();
                         }
                     }
